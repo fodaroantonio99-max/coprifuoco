@@ -1,0 +1,293 @@
+﻿<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Coprifuoco" Width="780" Height="700" MinWidth="700" MinHeight="520"
+        WindowStartupLocation="CenterScreen" Background="#2A2622"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
+        TextOptions.TextFormattingMode="Display" UseLayoutRounding="True">
+  <Window.Resources>
+    <SolidColorBrush x:Key="Rail" Color="#211E1A"/>
+    <SolidColorBrush x:Key="Line" Color="#433D34"/>
+    <SolidColorBrush x:Key="Hover" Color="#342F29"/>
+    <SolidColorBrush x:Key="Text" Color="#E6DCCA"/>
+    <SolidColorBrush x:Key="Muted" Color="#A39985"/>
+    <SolidColorBrush x:Key="Accent" Color="#BE9561"/>
+    <SolidColorBrush x:Key="Danger" Color="#D07A6A"/>
+    <SolidColorBrush x:Key="Good" Color="#9DB58A"/>
+    <SolidColorBrush x:Key="Field" Color="#1D1A17"/>
+    <SolidColorBrush x:Key="FieldLine" Color="#5A5246"/>
+
+    <Style x:Key="NavItem" TargetType="RadioButton">
+      <Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="3,0,0,0" Padding="18,11,12,11">
+              <ContentPresenter x:Name="Cp"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Bd" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                <Setter TargetName="Bd" Property="Background" Value="#2A2622"/>
+                <Setter TargetName="Cp" Property="TextElement.FontWeight" Value="SemiBold"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Bd" Property="Opacity" Value="0.5"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="RadioButton">
+      <Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="Margin" Value="0,4,18,4"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <StackPanel Orientation="Horizontal" Background="Transparent">
+              <Grid Width="18" Height="18" Margin="0,0,9,0" VerticalAlignment="Center">
+                <Ellipse x:Name="Ring" Fill="{StaticResource Field}" Stroke="{StaticResource FieldLine}" StrokeThickness="1"/>
+                <Ellipse x:Name="Dot" Width="8" Height="8" Fill="{StaticResource Accent}" Visibility="Collapsed"/>
+              </Grid>
+              <ContentPresenter VerticalAlignment="Center"/>
+            </StackPanel>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True"><Setter TargetName="Dot" Property="Visibility" Value="Visible"/><Setter TargetName="Ring" Property="Stroke" Value="{StaticResource Accent}"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Ring" Property="Stroke" Value="{StaticResource Muted}"/></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Ring" Property="Stroke" Value="{StaticResource Text}"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="CheckBox">
+      <Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="Margin" Value="0,10,0,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <DockPanel Background="Transparent">
+              <Border x:Name="Box" DockPanel.Dock="Left" Width="18" Height="18" Background="{StaticResource Field}" BorderBrush="{StaticResource FieldLine}"
+                      BorderThickness="1" CornerRadius="2" VerticalAlignment="Top" Margin="0,1,10,0">
+                <Path x:Name="Mark" Data="M3.5,9 L7.5,13 L14.5,4.5" Stroke="{StaticResource Accent}" StrokeThickness="2" Visibility="Collapsed"/>
+              </Border>
+              <ContentPresenter VerticalAlignment="Center">
+                <ContentPresenter.Resources>
+                  <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+                </ContentPresenter.Resources>
+              </ContentPresenter>
+            </DockPanel>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True"><Setter TargetName="Mark" Property="Visibility" Value="Visible"/><Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Muted}"/></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Text}"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="Quick" TargetType="Button">
+      <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+      <Setter Property="Margin" Value="0,0,14,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <TextBlock x:Name="T" Text="{TemplateBinding Content}" TextDecorations="Underline"/>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="T" Property="Foreground" Value="{StaticResource Text}"/></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="T" Property="Foreground" Value="{StaticResource Text}"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="T" Property="Opacity" Value="0.5"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="BigButton" TargetType="Button">
+      <Setter Property="Foreground" Value="#1E1B17"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="Transparent" BorderThickness="2" CornerRadius="2" Padding="22,10">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Opacity" Value="0.88"/></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="#E6DCCA"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style TargetType="TextBox">
+      <Setter Property="Background" Value="{StaticResource Field}"/>
+      <Setter Property="Foreground" Value="{StaticResource Text}"/>
+      <Setter Property="CaretBrush" Value="{StaticResource Text}"/>
+      <Setter Property="SelectionBrush" Value="#6B5A3E"/>
+      <Setter Property="BorderBrush" Value="{StaticResource FieldLine}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="FontFamily" Value="Consolas"/>
+      <Setter Property="FontSize" Value="17"/>
+      <Setter Property="Padding" Value="6,4"/>
+      <Setter Property="Width" Value="64"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Style.Triggers>
+        <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+      </Style.Triggers>
+    </Style>
+
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="10"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Grid Background="Transparent">
+              <Track x:Name="PART_Track" IsDirectionReversed="True">
+                <Track.Thumb>
+                  <Thumb><Thumb.Template><ControlTemplate TargetType="Thumb"><Border Background="#5A5246" CornerRadius="2" Margin="2,0"/></ControlTemplate></Thumb.Template></Thumb>
+                </Track.Thumb>
+                <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False"/></Track.DecreaseRepeatButton>
+                <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False"/></Track.IncreaseRepeatButton>
+              </Track>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="200"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <Border Background="{StaticResource Rail}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Margin="21,22,12,22">
+          <TextBlock Text="Coprifuoco" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource Text}"/>
+          <TextBlock Text="il PC rientra quando dici tu" FontSize="12" Foreground="{StaticResource Muted}" Margin="0,1,0,0"/>
+        </StackPanel>
+        <TextBlock DockPanel.Dock="Bottom" Margin="21,0,14,18" FontSize="12" Foreground="{StaticResource Muted}" TextWrapping="Wrap"
+                   Text="Se chiudi la finestra resto attivo vicino all'orologio. Per uscire: tasto destro sull'icona."/>
+        <StackPanel>
+          <RadioButton x:Name="ModeIn" Style="{StaticResource NavItem}" Content="Tra un po'" GroupName="mode" IsChecked="True"/>
+          <RadioButton x:Name="ModeAt" Style="{StaticResource NavItem}" Content="A un'ora precisa" GroupName="mode"/>
+          <RadioButton x:Name="ModeIdle" Style="{StaticResource NavItem}" Content="Se non lo uso" GroupName="mode"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Focusable="False">
+      <StackPanel Margin="32,26,32,24">
+
+        <TextBlock Text="Cosa deve fare il PC" FontWeight="SemiBold" Foreground="{StaticResource Text}" Margin="0,0,0,6"/>
+        <UniformGrid x:Name="ActionGrid" Columns="2"/>
+
+        <Rectangle Height="1" Fill="{StaticResource Line}" Margin="0,18,0,18"/>
+
+        <StackPanel x:Name="PanelIn">
+          <TextBlock Text="Dopo quanto tempo" FontWeight="SemiBold" Foreground="{StaticResource Text}" Margin="0,0,0,8"/>
+          <StackPanel Orientation="Horizontal">
+            <TextBox x:Name="Hours" Text="0" MaxLength="2" AutomationProperties.Name="Ore"/>
+            <TextBlock Text="ore" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="8,0,18,0"/>
+            <TextBox x:Name="Minutes" Text="30" MaxLength="3" AutomationProperties.Name="Minuti"/>
+            <TextBlock Text="minuti" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+          </StackPanel>
+          <WrapPanel Margin="0,10,0,0">
+            <Button x:Name="P15" Style="{StaticResource Quick}" Content="15 min"/>
+            <Button x:Name="P30" Style="{StaticResource Quick}" Content="30 min"/>
+            <Button x:Name="P60" Style="{StaticResource Quick}" Content="1 ora"/>
+            <Button x:Name="P120" Style="{StaticResource Quick}" Content="2 ore"/>
+          </WrapPanel>
+        </StackPanel>
+
+        <StackPanel x:Name="PanelAt" Visibility="Collapsed">
+          <TextBlock Text="A che ora" FontWeight="SemiBold" Foreground="{StaticResource Text}" Margin="0,0,0,8"/>
+          <StackPanel Orientation="Horizontal">
+            <TextBox x:Name="AtTime" Text="23:30" MaxLength="5" Width="84" AutomationProperties.Name="Ora di esecuzione"/>
+            <TextBlock Text="formato 24 ore" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+          </StackPanel>
+          <TextBlock Text="Se l'ora è già passata, vale per domani." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
+        </StackPanel>
+
+        <StackPanel x:Name="PanelIdle" Visibility="Collapsed">
+          <TextBlock Text="Dopo quanto tempo senza usarlo" FontWeight="SemiBold" Foreground="{StaticResource Text}" Margin="0,0,0,8"/>
+          <StackPanel Orientation="Horizontal">
+            <TextBox x:Name="IdleHours" Text="2" MaxLength="2" AutomationProperties.Name="Ore di inattività"/>
+            <TextBlock Text="ore" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="8,0,18,0"/>
+            <TextBox x:Name="IdleMinutes" Text="0" MaxLength="3" AutomationProperties.Name="Minuti di inattività"/>
+            <TextBlock Text="minuti" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+          </StackPanel>
+          <WrapPanel Margin="0,10,0,0">
+            <Button x:Name="I30" Style="{StaticResource Quick}" Content="30 min"/>
+            <Button x:Name="I60" Style="{StaticResource Quick}" Content="1 ora"/>
+            <Button x:Name="I120" Style="{StaticResource Quick}" Content="2 ore"/>
+            <Button x:Name="I180" Style="{StaticResource Quick}" Content="3 ore"/>
+          </WrapPanel>
+          <CheckBox x:Name="MediaGuard" IsChecked="True" Content="Non spegnere se c'è un video o dell'audio in riproduzione" Margin="0,14,0,0"/>
+          <CheckBox x:Name="UseWindow" Content="Controlla solo in una fascia oraria, per esempio di notte"/>
+          <StackPanel x:Name="WindowRow" Orientation="Horizontal" Margin="28,8,0,0" Visibility="Collapsed">
+            <TextBlock Text="dalle" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox x:Name="WinFrom" Text="00:00" MaxLength="5" Width="76" AutomationProperties.Name="Fascia oraria da"/>
+            <TextBlock Text="alle" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="14,0,8,0"/>
+            <TextBox x:Name="WinTo" Text="07:00" MaxLength="5" Width="76" AutomationProperties.Name="Fascia oraria a"/>
+          </StackPanel>
+          <CheckBox x:Name="AutoIdle" Content="Attiva da solo questo controllo quando accendo il PC"/>
+        </StackPanel>
+
+        <CheckBox x:Name="Force" Content="Chiudi le app aperte senza chiedere (solo spegni e riavvia)" Margin="0,16,0,0"/>
+
+        <Border BorderBrush="{StaticResource Accent}" BorderThickness="2,0,0,0" Padding="12,2,0,2" Margin="0,18,0,0">
+          <TextBlock x:Name="Explain" Text="" FontStyle="Italic" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+        </Border>
+
+        <Rectangle Height="1" Fill="{StaticResource Line}" Margin="0,18,0,16"/>
+
+        <TextBlock x:Name="StateLabel" Text="Nessun timer attivo" Foreground="{StaticResource Muted}"/>
+        <TextBlock x:Name="Countdown" Text="--:--:--" FontFamily="Consolas" FontSize="46" Foreground="{StaticResource Text}"
+                   Margin="0,2,0,6" AutomationProperties.LiveSetting="Polite"/>
+        <ProgressBar x:Name="Bar" Height="3" Minimum="0" Maximum="1" Value="0" Background="#3A352E" Foreground="{StaticResource Accent}" BorderThickness="0"/>
+
+        <UniformGrid x:Name="Tiles" Columns="3" Margin="0,14,0,0" Visibility="Collapsed">
+          <StackPanel Margin="0,0,10,0">
+            <TextBlock Text="Fermo da" FontSize="12" Foreground="{StaticResource Muted}"/>
+            <TextBlock x:Name="TileIdle" Text="--:--:--" FontFamily="Consolas" FontSize="17" Foreground="{StaticResource Text}"/>
+          </StackPanel>
+          <StackPanel Margin="0,0,10,0">
+            <TextBlock Text="Video e audio" FontSize="12" Foreground="{StaticResource Muted}"/>
+            <TextBlock x:Name="TileMedia" Text="--" FontSize="14" Foreground="{StaticResource Text}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+          </StackPanel>
+          <StackPanel>
+            <TextBlock Text="Controllo" FontSize="12" Foreground="{StaticResource Muted}"/>
+            <TextBlock x:Name="TileWindow" Text="--" FontSize="14" Foreground="{StaticResource Text}" TextWrapping="Wrap" Margin="0,2,0,0"/>
+          </StackPanel>
+        </UniformGrid>
+
+        <TextBlock x:Name="Message" Text="" FontSize="12" Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,10,0,0"/>
+
+        <Grid Margin="0,18,0,0" HorizontalAlignment="Left">
+          <Button x:Name="StartBtn" Style="{StaticResource BigButton}" Background="#BE9561" Content="Avvia"/>
+          <Button x:Name="CancelBtn" Style="{StaticResource BigButton}" Background="#D07A6A" Content="Annulla" Visibility="Collapsed"/>
+        </Grid>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</Window>

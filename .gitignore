@@ -1,0 +1,8 @@
+# programmi compilati: si ricreano con sorgenti/Compila.ps1
+*.exe
+*.zip
+
+# registri e file di prova
+*.log
+diag-reale.*
+anteprima-icona.png
