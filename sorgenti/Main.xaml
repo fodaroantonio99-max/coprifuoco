@@ -225,7 +225,24 @@
             <TextBox x:Name="AtTime" Text="23:30" MaxLength="5" Width="84" AutomationProperties.Name="Ora di esecuzione"/>
             <TextBlock Text="formato 24 ore" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="10,0,0,0"/>
           </StackPanel>
-          <TextBlock Text="Se l'ora è già passata, vale per domani." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
+          <TextBlock x:Name="AtHint" Text="Se l'ora è già passata, vale per domani." Foreground="{StaticResource Muted}" FontSize="12" Margin="0,8,0,0"/>
+          <CheckBox x:Name="RepeatBox" Content="Ripeti, senza dover riaprire Coprifuoco" Margin="0,16,0,0"/>
+          <StackPanel x:Name="DaysPanel" Visibility="Collapsed" Margin="28,4,0,0">
+            <WrapPanel>
+              <CheckBox x:Name="DayMon" Content="Lun" IsChecked="True" Margin="0,8,16,0"/>
+              <CheckBox x:Name="DayTue" Content="Mar" IsChecked="True" Margin="0,8,16,0"/>
+              <CheckBox x:Name="DayWed" Content="Mer" IsChecked="True" Margin="0,8,16,0"/>
+              <CheckBox x:Name="DayThu" Content="Gio" IsChecked="True" Margin="0,8,16,0"/>
+              <CheckBox x:Name="DayFri" Content="Ven" IsChecked="True" Margin="0,8,16,0"/>
+              <CheckBox x:Name="DaySat" Content="Sab" IsChecked="True" Margin="0,8,16,0"/>
+              <CheckBox x:Name="DaySun" Content="Dom" IsChecked="True" Margin="0,8,16,0"/>
+            </WrapPanel>
+            <WrapPanel Margin="0,10,0,0">
+              <Button x:Name="DaysAll" Style="{StaticResource Quick}" Content="Tutti i giorni"/>
+              <Button x:Name="DaysWork" Style="{StaticResource Quick}" Content="Lunedì-venerdì"/>
+              <Button x:Name="DaysWeekend" Style="{StaticResource Quick}" Content="Sabato e domenica"/>
+            </WrapPanel>
+          </StackPanel>
         </StackPanel>
 
         <StackPanel x:Name="PanelIdle" Visibility="Collapsed">

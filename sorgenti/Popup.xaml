@@ -43,7 +43,7 @@
   <StackPanel Margin="20,16,20,16">
     <TextBlock x:Name="Head" Text="" FontSize="17" FontWeight="SemiBold" Foreground="#E6DCCA" TextWrapping="Wrap"/>
     <TextBlock x:Name="Left" Text="00:05:00" FontFamily="Consolas" FontSize="34" Foreground="#D07A6A" Margin="0,6,0,2" AutomationProperties.LiveSetting="Assertive"/>
-    <TextBlock Text="Lascio fare, oppure rimando?" Foreground="#A39985" Margin="0,0,0,12"/>
+    <TextBlock Text="Se non premi niente, parto comunque all'ora prevista." Foreground="#A39985" TextWrapping="Wrap" Margin="0,0,0,12"/>
     <Button x:Name="Ok" Style="{StaticResource Main}" Content="Va bene, procedi"/>
     <TextBlock Text="Rimanda di" Foreground="#A39985" FontSize="12" Margin="0,12,0,4"/>
     <UniformGrid Columns="3">

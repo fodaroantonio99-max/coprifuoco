@@ -259,6 +259,55 @@ namespace Coprifuoco
             if (m > 0) p.Add(m + " min");
             return p.Count == 0 ? "0 min" : string.Join(" e ", p.ToArray());
         }
+
+        // Primo momento, dopo "now", in cui scatta l'ora "tod" in uno dei giorni scelti (bit 0 = lunedì ... bit 6 = domenica)
+        public static DateTime? NextOccurrence(DateTime now, TimeSpan tod, int mask)
+        {
+            if ((mask & 127) == 0) return null;
+            for (int i = 0; i <= 7; i++)
+            {
+                DateTime day = now.Date.AddDays(i);
+                int idx = ((int)day.DayOfWeek + 6) % 7;
+                if ((mask & (1 << idx)) == 0) continue;
+                DateTime t = day.Add(tod);
+                if (t > now) return t;
+            }
+            return null;
+        }
+
+        static readonly string[] DayNames = { "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica" };
+
+        public static string DaysText(int mask)
+        {
+            mask &= 127;
+            if (mask == 127) return "ogni giorno";
+            if (mask == 31) return "dal lunedì al venerdì";
+            if (mask == 96) return "il sabato e la domenica";
+            List<string> n = new List<string>();
+            for (int i = 0; i < 7; i++) if ((mask & (1 << i)) != 0) n.Add(DayNames[i]);
+            if (n.Count == 1) return "ogni " + n[0];
+            return "ogni " + string.Join(", ", n.Take(n.Count - 1).ToArray()) + " e " + n[n.Count - 1];
+        }
+
+        public static string WhenText(DateTime now, DateTime t)
+        {
+            string hm = t.ToString("HH:mm");
+            if (t.Date == now.Date) return "oggi alle " + hm;
+            if (t.Date == now.Date.AddDays(1)) return "domani alle " + hm;
+            return t.ToString("dddd d MMMM", new CultureInfo("it-IT")) + " alle " + hm;
+        }
+
+        public static string Capital(string s) { return s.Length == 0 ? s : char.ToUpper(s[0]) + s.Substring(1); }
+
+        // Una scadenza è "vecchia" se è passata da più di 5 minuti: il PC era spento o in sospensione
+        public static bool IsStale(DateTime now, DateTime target) { return (now - target).TotalSeconds > 300; }
+
+        // Quale scadenza riprendere dopo un riavvio: quella salvata se è ancora futura, altrimenti la prossima della ripetizione
+        public static DateTime? ResolveRestore(DateTime now, DateTime saved, bool repeat, TimeSpan tod, int mask)
+        {
+            if (saved > now) return saved;
+            return repeat ? NextOccurrence(now, tod, mask) : (DateTime?)null;
+        }
     }
 
     class ActionInfo
@@ -294,9 +343,13 @@ namespace Coprifuoco
     // ------------------------------------------------------------------
     class CoprifuocoApp
     {
-        public static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Coprifuoco");
-        static readonly string LogFile = Path.Combine(DataDir, "coprifuoco.log");
-        static readonly string SettingsFile = Path.Combine(DataDir, "settings.ini");
+        // COPRIFUOCO_DATA serve solo alle prove: manda impostazioni e registro in una cartella separata
+        public static string DataDir
+        {
+            get { return Environment.GetEnvironmentVariable("COPRIFUOCO_DATA") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Coprifuoco"); }
+        }
+        static string LogFile { get { return Path.Combine(DataDir, "coprifuoco.log"); } }
+        static string SettingsFile { get { return Path.Combine(DataDir, "settings.ini"); } }
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
         readonly bool dryRun;
@@ -324,6 +377,12 @@ namespace Coprifuoco
         bool force, mediaGuard = true, useWindow, warned, popupShown, balloonShown;
         int idleThreshold;
         TimeSpan winFrom, winTo;
+        bool repeat;                 // ripetizione giornaliera attiva
+        int daysMask = 127;          // giorni scelti: bit 0 = lunedì ... bit 6 = domenica
+        TimeSpan atTod;              // l'ora scelta per la ripetizione
+        DispatcherTimer watchdog;    // se Windows resta fermo su una conferma, dopo un minuto forza
+        public bool NoPersist;       // solo per --selftest: non scrivere le impostazioni vere
+        public static bool TestMode; // --instance=nome: prove isolate, senza suoni e con le finestre fuori schermo
 
         public CoprifuocoApp(Application application, bool dryRun)
         {
@@ -370,6 +429,23 @@ namespace Coprifuoco
         UniformGrid actionGrid, tiles;
         Button startBtn, cancelBtn;
         Button[] quick;
+        CheckBox repeatBox;
+        StackPanel daysPanel;
+        CheckBox[] dayBoxes;
+        Button[] dayQuick;
+
+        int DaysMask()
+        {
+            int m = 0;
+            for (int i = 0; i < dayBoxes.Length; i++) if (dayBoxes[i].IsChecked == true) m |= 1 << i;
+            return m;
+        }
+
+        void SetDays(int mask)
+        {
+            for (int i = 0; i < dayBoxes.Length; i++) dayBoxes[i].IsChecked = (mask & (1 << i)) != 0;
+            UpdateExplain();
+        }
 
         public Window Build()
         {
@@ -387,6 +463,18 @@ namespace Coprifuoco
             bar = F<ProgressBar>("Bar");
             actionGrid = F<UniformGrid>("ActionGrid"); tiles = F<UniformGrid>("Tiles");
             startBtn = F<Button>("StartBtn"); cancelBtn = F<Button>("CancelBtn");
+            repeatBox = F<CheckBox>("RepeatBox"); daysPanel = F<StackPanel>("DaysPanel");
+            dayBoxes = new CheckBox[] { F<CheckBox>("DayMon"), F<CheckBox>("DayTue"), F<CheckBox>("DayWed"), F<CheckBox>("DayThu"), F<CheckBox>("DayFri"), F<CheckBox>("DaySat"), F<CheckBox>("DaySun") };
+            dayQuick = new Button[] { F<Button>("DaysAll"), F<Button>("DaysWork"), F<Button>("DaysWeekend") };
+            repeatBox.Click += delegate
+            {
+                daysPanel.Visibility = repeatBox.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+                ShowMode();
+            };
+            foreach (CheckBox d in dayBoxes) d.Click += delegate { UpdateExplain(); };
+            F<Button>("DaysAll").Click += delegate { SetDays(127); };
+            F<Button>("DaysWork").Click += delegate { SetDays(31); };
+            F<Button>("DaysWeekend").Click += delegate { SetDays(96); };
 
             foreach (ActionInfo a in actions)
             {
@@ -439,6 +527,7 @@ namespace Coprifuoco
             MigrateLegacyData();
             RestoreSettings();
             windowRow.Visibility = useWindowBox.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            daysPanel.Visibility = repeatBox.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
             ShowMode();
             return win;
         }
@@ -479,7 +568,7 @@ namespace Coprifuoco
             panelIn.Visibility = m == "in" ? Visibility.Visible : Visibility.Collapsed;
             panelAt.Visibility = m == "at" ? Visibility.Visible : Visibility.Collapsed;
             panelIdle.Visibility = m == "idle" ? Visibility.Visible : Visibility.Collapsed;
-            startBtn.Content = m == "idle" ? "Attiva il controllo" : "Avvia timer";
+            startBtn.Content = m == "idle" ? "Attiva il controllo" : (m == "at" && repeatBox.IsChecked == true) ? "Attiva la ripetizione" : "Avvia timer";
             UpdateExplain();
         }
 
@@ -501,6 +590,17 @@ namespace Coprifuoco
                 case "at":
                     {
                         DateTime now = DateTime.Now;
+                        if (repeatBox.IsChecked == true)
+                        {
+                            TimeSpan tod;
+                            int mask = DaysMask();
+                            if (!Logic.TryTimeOfDay(atTime.Text, out tod)) { explain.Text = "Scrivi un'ora valida in formato 24 ore, ad esempio 00:01."; break; }
+                            if (mask == 0) { explain.Text = "Scegli almeno un giorno."; break; }
+                            DateTime? nx = Logic.NextOccurrence(now, tod, mask);
+                            explain.Text = string.Format("{0} alle {1:00}:{2:00} il computer farà l'azione scelta ({3}), senza che tu debba riaprire Coprifuoco. Il prossimo è {4}. Se spegni o riavvii il PC prima, la ripetizione riparte da sola con Windows. Cinque minuti prima compare un avviso: se non premi niente, procedo comunque.",
+                                Logic.Capital(Logic.DaysText(mask)), tod.Hours, tod.Minutes, act, Logic.WhenText(now, nx.Value));
+                            break;
+                        }
                         DateTime? t = Logic.TargetTime("at", "", "", atTime.Text, now);
                         explain.Text = t.HasValue
                             ? string.Format("Premi Avvia: il computer farà l'azione scelta ({0}) {1} alle {2:HH:mm}.", act, t.Value.Date == now.Date ? "oggi" : "domani", t.Value)
@@ -527,9 +627,11 @@ namespace Coprifuoco
         {
             startBtn.Visibility = running ? Visibility.Collapsed : Visibility.Visible;
             cancelBtn.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
-            cancelBtn.Content = kind == "idle" ? "Ferma il controllo" : "Annulla";
-            List<Control> locked = new List<Control> { modeIn, modeAt, modeIdle, hours, minutes, atTime, idleHours, idleMinutes, mediaGuardBox, autoIdleBox, useWindowBox, winFromBox, winToBox, forceBox };
+            cancelBtn.Content = kind == "idle" ? "Ferma il controllo" : repeat ? "Ferma la ripetizione" : "Annulla";
+            List<Control> locked = new List<Control> { modeIn, modeAt, modeIdle, hours, minutes, atTime, idleHours, idleMinutes, mediaGuardBox, autoIdleBox, useWindowBox, winFromBox, winToBox, forceBox, repeatBox };
             locked.AddRange(quick);
+            locked.AddRange(dayBoxes.Cast<Control>());
+            locked.AddRange(dayQuick.Cast<Control>());
             locked.AddRange(radios.Values.Cast<Control>());
             foreach (Control c in locked) c.IsEnabled = !running;
         }
@@ -550,14 +652,27 @@ namespace Coprifuoco
             try
             {
                 Directory.CreateDirectory(DataDir);
-                string[] lines = new string[]
+                if (NoPersist) return;
+                List<string> lines = new List<string>
                 {
                     "action=" + SelectedAction(), "mode=" + Mode(), "hours=" + hours.Text, "minutes=" + minutes.Text, "at=" + atTime.Text,
                     "idleHours=" + idleHours.Text, "idleMinutes=" + idleMinutes.Text, "mediaGuard=" + (mediaGuardBox.IsChecked == true),
                     "autoIdle=" + (autoIdleBox.IsChecked == true), "useWindow=" + (useWindowBox.IsChecked == true),
-                    "winFrom=" + winFromBox.Text, "winTo=" + winToBox.Text, "force=" + (forceBox.IsChecked == true)
+                    "winFrom=" + winFromBox.Text, "winTo=" + winToBox.Text, "force=" + (forceBox.IsChecked == true),
+                    "repeat=" + (repeatBox.IsChecked == true), "days=" + DaysMask()
                 };
-                File.WriteAllLines(SettingsFile, lines, Encoding.UTF8);
+                // il timer in corso viene salvato: un riavvio del PC non lo cancella
+                if (kind == "timer")
+                {
+                    lines.Add("run.kind=timer");
+                    lines.Add("run.action=" + action);
+                    lines.Add("run.force=" + force);
+                    lines.Add("run.target=" + target.ToString("o"));
+                    lines.Add("run.repeat=" + repeat);
+                    lines.Add("run.days=" + daysMask);
+                    lines.Add("run.tod=" + string.Format("{0:00}:{1:00}", atTod.Hours, atTod.Minutes));
+                }
+                File.WriteAllLines(SettingsFile, lines.ToArray(), Encoding.UTF8);
             }
             catch { }
         }
@@ -594,6 +709,12 @@ namespace Coprifuoco
             if (s.TryGetValue("winFrom", out v)) winFromBox.Text = v;
             if (s.TryGetValue("winTo", out v)) winToBox.Text = v;
             if (s.TryGetValue("force", out v)) forceBox.IsChecked = v == "True";
+            if (s.TryGetValue("repeat", out v)) repeatBox.IsChecked = v == "True";
+            if (s.TryGetValue("days", out v))
+            {
+                int dm;
+                if (int.TryParse(v, out dm)) for (int i = 0; i < dayBoxes.Length; i++) dayBoxes[i].IsChecked = (dm & (1 << i)) != 0;
+            }
             if (s.TryGetValue("mode", out v)) { if (v == "at") modeAt.IsChecked = true; else if (v == "idle") modeIdle.IsChecked = true; }
         }
 
@@ -619,6 +740,7 @@ namespace Coprifuoco
                     { message.Text = "Fascia oraria non valida. Usa il formato 24 ore, ad esempio 00:00 e 07:00."; return; }
                 }
                 kind = "idle";
+                repeat = false;
                 idleThreshold = thr.Value;
                 mediaGuard = mediaGuardBox.IsChecked == true;
                 lastMedia = DateTime.MinValue;
@@ -629,25 +751,57 @@ namespace Coprifuoco
             }
             else
             {
-                DateTime? t = Logic.TargetTime(mode, hours.Text, minutes.Text, atTime.Text, DateTime.Now);
+                bool rep = mode == "at" && repeatBox.IsChecked == true;
+                TimeSpan tod = TimeSpan.Zero;
+                int mask = 127;
+                DateTime? t;
+                if (rep)
+                {
+                    mask = DaysMask();
+                    if (!Logic.TryTimeOfDay(atTime.Text, out tod)) { message.Text = "Ora non valida. Usa il formato 24 ore, ad esempio 00:01."; return; }
+                    if (mask == 0) { message.Text = "Scegli almeno un giorno."; return; }
+                    t = Logic.NextOccurrence(DateTime.Now, tod, mask);
+                }
+                else t = Logic.TargetTime(mode, hours.Text, minutes.Text, atTime.Text, DateTime.Now);
                 if (!t.HasValue)
                 {
                     message.Text = mode == "in" ? "Inserisci almeno 1 minuto (ore 0-99, minuti 0-999)." : "Ora non valida. Usa il formato 24 ore, ad esempio 23:30.";
                     return;
                 }
                 kind = "timer";
+                repeat = rep;
+                daysMask = mask;
+                atTod = tod;
                 target = t.Value;
-                Log(string.Format("Timer avviato: {0} alle {1:yyyy-MM-dd HH:mm:ss}", action, target));
-                stateLabel.Text = string.Format("{0} alle {1:HH:mm}", Info(action).Label.ToLower(), target);
+                Log(rep
+                    ? string.Format("Ripetizione avviata: {0} {1} alle {2:00}:{3:00} (prossimo {4:yyyy-MM-dd HH:mm})", action, Logic.DaysText(mask), tod.Hours, tod.Minutes, target)
+                    : string.Format("Timer avviato: {0} alle {1:yyyy-MM-dd HH:mm:ss}", action, target));
+                stateLabel.Text = TimerLabel();
                 tiles.Visibility = Visibility.Collapsed;
                 message.Text = "";
+            }
+            // un timer deve sopravvivere a un riavvio: serve che Coprifuoco parta con Windows
+            string extra = "";
+            if (kind == "timer" && !AutoStartEnabled())
+            {
+                SetAutoStart(true);
+                if (menuAuto != null) menuAuto.Checked = true;
+                extra = "Ho attivato «Avvia con Windows»: serve a tenere il timer valido anche dopo un riavvio.";
             }
             SaveSettings();
             countdown.Foreground = Res("Text");
             SetRunning(true);
             OnTick(null, null);
             if (kind != null) tick.Start();
+            if (extra.Length > 0) message.Text = extra;
             UpdateTray();
+        }
+
+        string TimerLabel()
+        {
+            string a = Info(action).Label.ToLower();
+            if (!repeat) return string.Format("{0} alle {1:HH:mm}", a, target);
+            return string.Format("{0} alle {1:00}:{2:00}: {3}. Prossimo: {4}", Logic.Capital(Logic.DaysText(daysMask)), atTod.Hours, atTod.Minutes, a, Logic.WhenText(DateTime.Now, target));
         }
 
         public void StopRun(string msg)
@@ -655,8 +809,11 @@ namespace Coprifuoco
             tick.Stop();
             ClosePopup();
             Log("Timer/controllo fermato dall'utente");
+            CloseNotice();
             kind = null;
             SetRunning(false);
+            repeat = false;
+            SaveSettings();
             ResetDisplay();
             if (msg != null) message.Text = msg;
             UpdateTray();
@@ -668,13 +825,187 @@ namespace Coprifuoco
         {
             tick.Stop();
             ClosePopup();
+            // con la ripetizione, prima di agire preparo e salvo la prossima scadenza: se il PC si spegne, al riavvio riparte
+            bool again = false;
+            if (kind == "timer" && repeat)
+            {
+                DateTime now = DateTime.Now;
+                DateTime? nx = Logic.NextOccurrence(now, atTod, daysMask);
+                if (nx.HasValue) { target = nx.Value; start = now; popupShown = false; warned = false; again = true; Log("Ripetizione: prossimo " + target.ToString("yyyy-MM-dd HH:mm")); }
+            }
+            if (!again) kind = null;
+            SaveSettings();
             message.Text = "Esecuzione in corso...";
             PowerAction(action, force);
-            kind = null;
+            ArmShutdownWatchdog(action);
+            if (again)
+            {
+                stateLabel.Text = TimerLabel();
+                message.Text = dryRun ? "Prova: azione non eseguita. Prossimo: " + Logic.WhenText(DateTime.Now, target) : "Fatto. Prossimo: " + Logic.WhenText(DateTime.Now, target);
+                tick.Start();
+                UpdateTray();
+                return;
+            }
+            repeat = false;
             SetRunning(false);
             ResetDisplay();
             if (dryRun) message.Text = "Prova: azione non eseguita (modalità test).";
             UpdateTray();
+        }
+
+        // Se Windows resta fermo su una conferma («questa app impedisce l'arresto») e nessuno risponde,
+        // dopo un minuto forzo la chiusura: di notte non c'è nessuno a premere il tasto.
+        void ArmShutdownWatchdog(string key)
+        {
+            if (dryRun || force || (key != "shutdown" && key != "restart")) return;
+            if (watchdog != null) watchdog.Stop();
+            watchdog = new DispatcherTimer();
+            watchdog.Interval = TimeSpan.FromSeconds(60);
+            watchdog.Tick += delegate
+            {
+                watchdog.Stop();
+                Log("Windows non ha completato l'operazione in 60 secondi (app che chiedono conferma?): forzo la chiusura");
+                Run("shutdown.exe", (key == "restart" ? "/r" : "/s") + " /t 0 /f");
+            };
+            watchdog.Start();
+        }
+
+        // Scadenza passata da più di 5 minuti (PC spento o in sospensione): non spengo di colpo al risveglio
+        void SkipMissed(DateTime now)
+        {
+            Log(string.Format("Scadenza saltata: prevista {0:yyyy-MM-dd HH:mm}, ma sono le {1:HH:mm} (PC spento o in sospensione)", target, now));
+            ClosePopup();
+            popupShown = false;
+            if (repeat)
+            {
+                DateTime? nx = Logic.NextOccurrence(now, atTod, daysMask);
+                if (nx.HasValue)
+                {
+                    target = nx.Value; start = now;
+                    SaveSettings();
+                    stateLabel.Text = TimerLabel();
+                    message.Text = "Scadenza saltata perché il PC non era attivo. Prossimo: " + Logic.WhenText(now, target);
+                    UpdateTray();
+                    return;
+                }
+            }
+            tick.Stop();
+            kind = null;
+            repeat = false;
+            SetRunning(false);
+            ResetDisplay();
+            SaveSettings();
+            message.Text = "Scadenza saltata: il PC non era attivo all'ora prevista.";
+            UpdateTray();
+            if (tray != null) tray.ShowBalloonTip(6000, "Coprifuoco", "Il timer era scaduto mentre il PC non era attivo: non l'ho eseguito.", WF.ToolTipIcon.Info);
+        }
+
+        // ---------- dopo un riavvio: riprende il timer salvato e chiede conferma ----------
+        Window notice;
+        DispatcherTimer noticeTimer;
+
+        public void RestoreRun()
+        {
+            Dictionary<string, string> s = ReadSettings();
+            string v;
+            if (!s.TryGetValue("run.kind", out v) || v != "timer") return;
+            try
+            {
+                DateTime saved = DateTime.Parse(s["run.target"], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+                bool rep = s.TryGetValue("run.repeat", out v) && v == "True";
+                int mask = 127;
+                int parsedMask;
+                if (s.TryGetValue("run.days", out v) && int.TryParse(v, out parsedMask)) mask = parsedMask;
+                TimeSpan tod = TimeSpan.Zero;
+                if (s.TryGetValue("run.tod", out v)) Logic.TryTimeOfDay(v, out tod);
+                string act = s.ContainsKey("run.action") ? s["run.action"] : "shutdown";
+                DateTime now = DateTime.Now;
+                DateTime? t = Logic.ResolveRestore(now, saved, rep, tod, mask);
+                if (!t.HasValue)
+                {
+                    Log(string.Format("Timer salvato per {0:yyyy-MM-dd HH:mm} scaduto mentre il PC non era attivo: non lo riprendo", saved));
+                    kind = null;
+                    SaveSettings();
+                    if (tray != null) tray.ShowBalloonTip(8000, "Coprifuoco", string.Format("Il timer delle {0:HH:mm} era scaduto mentre il PC non era attivo: non l'ho eseguito.", saved), WF.ToolTipIcon.Info);
+                    return;
+                }
+                action = act;
+                force = s.TryGetValue("run.force", out v) && v == "True";
+                repeat = rep; daysMask = mask; atTod = tod; target = t.Value;
+                kind = "timer";
+                start = now;
+                warned = false; popupShown = false;
+                stateLabel.Text = TimerLabel();
+                tiles.Visibility = Visibility.Collapsed;
+                message.Text = "";
+                SetRunning(true);
+                OnTick(null, null);
+                if (kind != null) tick.Start();
+                UpdateTray();
+                SaveSettings();
+                Log(string.Format("Timer ripreso dopo l'avvio: {0}, prossima scadenza {1:yyyy-MM-dd HH:mm}", action, target));
+                ShowRestartNotice();
+            }
+            catch (Exception ex) { Log("Non sono riuscito a riprendere il timer salvato: " + ex.Message); }
+        }
+
+        // Banner dopo il riavvio: "Ti ricordi di quel timer? Lo tengo valido?" Se non premi niente, resta valido.
+        void ShowRestartNotice()
+        {
+            CloseNotice();
+            Window w = (Window)XamlReader.Load(Resource("Riavvio.xaml"));
+            DateTime now = DateTime.Now;
+            string what = Info(action).Label.ToLower();
+            ((TextBlock)w.FindName("Head")).Text = "Ti ricordi di quel timer?";
+            ((TextBlock)w.FindName("Body")).Text = repeat
+                ? string.Format("Il computer è stato riavviato. Avevi messo: {0} alle {1:00}:{2:00}, {3}. Il prossimo è {4}. Lo tengo valido?", what, atTod.Hours, atTod.Minutes, Logic.DaysText(daysMask), Logic.WhenText(now, target))
+                : string.Format("Il computer è stato riavviato. Avevi messo: {0} {1}. Lo tengo valido?", what, Logic.WhenText(now, target));
+            ((Button)w.FindName("Keep")).Click += delegate { Log("Dopo il riavvio: timer confermato dall'utente"); CloseNotice(); };
+            ((Button)w.FindName("Cancel")).Click += delegate
+            {
+                Log("Dopo il riavvio: timer annullato dall'utente");
+                CloseNotice();
+                StopRun("Annullato dopo il riavvio. Non succederà nulla.");
+            };
+            w.Closed += delegate { if (notice == w) notice = null; };
+            w.WindowStartupLocation = WindowStartupLocation.Manual;
+            Rect wa = SystemParameters.WorkArea;
+            w.Left = wa.Right - w.Width - 16;
+            w.Top = wa.Bottom - w.Height - 16;
+            if (TestMode) { w.Left = -32000; w.Top = -32000; }
+            notice = w;
+            w.Show();
+            if (!TestMode) System.Media.SystemSounds.Asterisk.Play();
+            // niente risposta = va bene: dopo 3 minuti il banner sparisce e il timer resta valido
+            noticeTimer = new DispatcherTimer();
+            noticeTimer.Interval = TimeSpan.FromMinutes(3);
+            noticeTimer.Tick += delegate { Log("Dopo il riavvio: nessuna risposta, il timer resta valido"); CloseNotice(); };
+            noticeTimer.Start();
+        }
+
+        void CloseNotice()
+        {
+            if (noticeTimer != null) { noticeTimer.Stop(); noticeTimer = null; }
+            if (notice == null) return;
+            Window w = notice;
+            notice = null;
+            try { w.Close(); } catch { }
+        }
+
+        public bool NoticeOpen { get { return notice != null && notice.IsVisible; } }
+        public void ShowNoticeOffscreenForTest()
+        {
+            Window w = (Window)XamlReader.Load(Resource("Riavvio.xaml"));
+            w.WindowStartupLocation = WindowStartupLocation.Manual;
+            w.Left = -32000; w.Top = -32000;
+            notice = w;
+            w.Show();
+        }
+        public void CloseNoticeForTest() { CloseNotice(); }
+        public bool HasNoticeButtons()
+        {
+            Window w = (Window)XamlReader.Load(Resource("Riavvio.xaml"));
+            return w.FindName("Keep") != null && w.FindName("Cancel") != null && w.FindName("Head") != null && w.FindName("Body") != null;
         }
 
         void PowerAction(string key, bool forceClose)
@@ -707,7 +1038,13 @@ namespace Coprifuoco
             if (kind == "timer")
             {
                 double remaining = (target - now).TotalSeconds;
-                if (remaining <= 0) { countdown.Text = "00:00:00"; CompleteAction(); return; }
+                if (remaining <= 0)
+                {
+                    if (Logic.IsStale(now, target)) { SkipMissed(now); return; }
+                    countdown.Text = "00:00:00";
+                    CompleteAction();
+                    return;
+                }
                 double total = (target - start).TotalSeconds;
                 bar.Value = Math.Min(1, Math.Max(0, 1 - remaining / total));
                 countdown.Text = Logic.FormatSpan(remaining);
@@ -772,7 +1109,7 @@ namespace Coprifuoco
             {
                 countdown.Foreground = Res("Danger");
                 message.Text = "Sto per agire. Muovi il mouse o premi un tasto per fermare tutto.";
-                if (!warned) { warned = true; System.Media.SystemSounds.Exclamation.Play(); }
+                if (!warned) { warned = true; if (!TestMode) System.Media.SystemSounds.Exclamation.Play(); }
             }
             else
             {
@@ -813,9 +1150,10 @@ namespace Coprifuoco
             Rect wa = SystemParameters.WorkArea;
             w.Left = wa.Right - w.Width - 16;
             w.Top = wa.Bottom - w.Height - 16;
+            if (TestMode) { w.Left = -32000; w.Top = -32000; }
             popup = w;
             w.Show();
-            System.Media.SystemSounds.Asterisk.Play();
+            if (!TestMode) System.Media.SystemSounds.Asterisk.Play();
         }
 
         public void ShowPopupOffscreen()
@@ -846,6 +1184,7 @@ namespace Coprifuoco
             popupShown = false;
             Log("Rimandato di " + min + " minuti");
             ClosePopup();
+            SaveSettings();
         }
 
         public void SetStateForTest(string k, int idleThr, DateTime t, string act)
@@ -956,6 +1295,7 @@ namespace Coprifuoco
         // All'accensione riprende da solo solo il controllo di inattività, e solo se l'hai chiesto
         public void ResumeIdleIfWanted()
         {
+            if (Running) return;
             if (modeIdle.IsChecked == true && autoIdleBox.IsChecked == true)
             {
                 Log("Riavvio automatico del controllo di inattività");
@@ -970,6 +1310,8 @@ namespace Coprifuoco
     {
         static string SelfTest()
         {
+            // il test non deve scrivere nel registro e nelle impostazioni vere
+            Environment.SetEnvironmentVariable("COPRIFUOCO_DATA", Path.Combine(Path.GetTempPath(), "coprifuoco-selftest-dati"));
             StringBuilder log = new StringBuilder();
             bool ok = true;
             Action<bool, string> check = delegate(bool cond, string name)
@@ -999,6 +1341,31 @@ namespace Coprifuoco
             check(Logic.FormatSpan(7265) == "02:01:05", "formato tempo");
             check(Logic.HumanSpan(90) == "1 ora e 30 min", "tempo a parole");
 
+            // ripetizione giornaliera (giovedì 22 ottobre 2026, ore 22:00)
+            DateTime thu = new DateTime(2026, 10, 22, 22, 0, 0);
+            TimeSpan t0001 = new TimeSpan(0, 1, 0);
+            t = Logic.NextOccurrence(thu, t0001, 127);
+            check(t.HasValue && t.Value == new DateTime(2026, 10, 23, 0, 1, 0), "ogni giorno alle 00:01: il prossimo è domani");
+            t = Logic.NextOccurrence(new DateTime(2026, 10, 23, 0, 0, 30), t0001, 127);
+            check(t.HasValue && t.Value == new DateTime(2026, 10, 23, 0, 1, 0), "30 secondi prima delle 00:01: scatta oggi");
+            t = Logic.NextOccurrence(new DateTime(2026, 10, 23, 0, 1, 0), t0001, 127);
+            check(t.HasValue && t.Value == new DateTime(2026, 10, 24, 0, 1, 0), "alle 00:01 in punto: il prossimo è il giorno dopo");
+            t = Logic.NextOccurrence(new DateTime(2026, 10, 23, 1, 0, 0), t0001, 31);
+            check(t.HasValue && t.Value == new DateTime(2026, 10, 26, 0, 1, 0), "solo lunedì-venerdì: venerdì dopo le 00:01 salta al lunedì");
+            t = Logic.NextOccurrence(thu, t0001, 96);
+            check(t.HasValue && t.Value == new DateTime(2026, 10, 24, 0, 1, 0), "solo weekend: giovedì sera, il prossimo è sabato 00:01");
+            check(!Logic.NextOccurrence(thu, t0001, 0).HasValue, "nessun giorno scelto");
+            check(Logic.DaysText(127) == "ogni giorno" && Logic.DaysText(31) == "dal lunedì al venerdì" && Logic.DaysText(96) == "il sabato e la domenica", "testo dei giorni");
+            check(Logic.DaysText(1 | 4 | 16) == "ogni lunedì, mercoledì e venerdì", "testo di giorni sparsi");
+            check(Logic.WhenText(thu, new DateTime(2026, 10, 23, 0, 1, 0)) == "domani alle 00:01", "testo: domani");
+            // dopo un riavvio
+            DateTime midnight = new DateTime(2026, 10, 23, 0, 0, 0);
+            check(Logic.ResolveRestore(new DateTime(2026, 10, 22, 17, 0, 0), midnight, false, TimeSpan.Zero, 127) == midnight, "dopo il riavvio la scadenza di mezzanotte resta valida");
+            check(!Logic.ResolveRestore(new DateTime(2026, 10, 23, 8, 0, 0), midnight, false, TimeSpan.Zero, 127).HasValue, "scadenza singola passata: non si riprende");
+            t = Logic.ResolveRestore(new DateTime(2026, 10, 23, 8, 0, 0), midnight, true, TimeSpan.Zero, 127);
+            check(t.HasValue && t.Value == new DateTime(2026, 10, 24, 0, 0, 0), "ripetizione passata: si passa alla prossima");
+            check(Logic.IsStale(new DateTime(2026, 10, 23, 7, 0, 0), midnight) && !Logic.IsStale(new DateTime(2026, 10, 23, 0, 2, 0), midnight), "scadenza vecchia solo dopo 5 minuti");
+
             double idle = Native.IdleSeconds();
             check(idle >= 0 && idle < 86400 * 30, "sensore tastiera/mouse");
             float peak = Native.AudioPeak();
@@ -1019,6 +1386,7 @@ namespace Coprifuoco
 
             Application app = new Application();
             CoprifuocoApp na = new CoprifuocoApp(app, true);
+            na.NoPersist = true;   // il test non deve toccare le impostazioni vere
             Window w = null;
             try { w = na.Build(); } catch (Exception ex) { check(false, "interfaccia principale: " + ex.Message); }
             if (w != null)
@@ -1037,6 +1405,11 @@ namespace Coprifuoco
                     check(na.PopupLeftText == "00:01:40", "il pop-up mostra il conto alla rovescia");
                     na.ClosePopup();
                     check(!na.PopupOpen, "il pop-up si chiude");
+                    check(na.HasNoticeButtons(), "banner dopo il riavvio: interfaccia");
+                    na.ShowNoticeOffscreenForTest();
+                    check(na.NoticeOpen, "il banner dopo il riavvio si apre");
+                    na.CloseNoticeForTest();
+                    check(!na.NoticeOpen, "il banner dopo il riavvio si chiude");
                 }
                 catch (Exception ex) { check(false, "pop-up: " + ex.Message); }
             }
@@ -1049,6 +1422,10 @@ namespace Coprifuoco
         {
             bool background = args.Contains("--background");
             bool dryRun = args.Contains("--dryrun");
+            // --instance=nome: copia di prova separata dall'app vera (altro nome di mutex, niente icona, niente suoni)
+            string instance = "";
+            foreach (string a in args) if (a.StartsWith("--instance=")) instance = a.Substring(11);
+            CoprifuocoApp.TestMode = instance.Length > 0;
 
             if (args.Contains("--selftest"))
             {
@@ -1058,16 +1435,16 @@ namespace Coprifuoco
             }
 
             // una sola copia alla volta: se è già aperta, la richiama in primo piano
-            Mutex mutex = new Mutex(false, "Local\\CoprifuocoApp");
+            Mutex mutex = new Mutex(false, "Local\\CoprifuocoApp" + instance);
             bool owner;
             try { owner = mutex.WaitOne(0); }
             catch (AbandonedMutexException) { owner = true; }
             if (!owner)
             {
-                try { EventWaitHandle.OpenExisting("Local\\CoprifuocoApp.show").Set(); } catch { }
+                try { EventWaitHandle.OpenExisting("Local\\CoprifuocoApp" + instance + ".show").Set(); } catch { }
                 return 0;
             }
-            EventWaitHandle showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\CoprifuocoApp.show");
+            EventWaitHandle showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\CoprifuocoApp" + instance + ".show");
 
             Application app = new Application();
             app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -1082,7 +1459,7 @@ namespace Coprifuoco
             try
             {
                 win = na.Build();
-                na.BuildTray();
+                if (!CoprifuocoApp.TestMode) na.BuildTray();
             }
             catch (Exception ex)
             {
@@ -1103,6 +1480,7 @@ namespace Coprifuoco
             waiter.Start();
 
             CoprifuocoApp.Log("App avviata (prova=" + dryRun + ", sfondo=" + background + ")");
+            na.RestoreRun();
             if (background) { na.ResumeIdleIfWanted(); Native.TrimMemory(); }
             else win.Show();
 

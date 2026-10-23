@@ -15,7 +15,7 @@ $std = 'System.Core.dll,System.Drawing.dll,System.Windows.Forms.dll,Microsoft.CS
 Push-Location $here
 & $csc /nologo /target:winexe /optimize+ /codepage:65001 "/lib:$fw\WPF" "/r:$wpf,$std" `
     "/win32icon:coprifuoco.ico" "/out:$out\Coprifuoco.exe" `
-    "/resource:Main.xaml,Main.xaml" "/resource:Popup.xaml,Popup.xaml" "/resource:coprifuoco.ico,Coprifuoco.ico" Coprifuoco.cs
+    "/resource:Main.xaml,Main.xaml" "/resource:Popup.xaml,Popup.xaml" "/resource:Riavvio.xaml,Riavvio.xaml" "/resource:coprifuoco.ico,Coprifuoco.ico" Coprifuoco.cs
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw 'Compilazione di Coprifuoco.exe fallita' }
 
 # 3) l'installer, che porta dentro Coprifuoco.exe
